@@ -3,8 +3,11 @@ const { readFile } = require("node:fs/promises");
 const path = require("node:path");
 const {
   PlannerError,
+  buildAssistantMessages,
   buildPlannerMessages,
   parseAndValidatePlan,
+  validateAssistantRequest,
+  validateAssistantResponse,
   validatePlannerRequest
 } = require("./planner");
 
@@ -14,7 +17,8 @@ const STATIC_FILES = {
   "/": ["index.html", "text/html; charset=utf-8"],
   "/index.html": ["index.html", "text/html; charset=utf-8"],
   "/styles.css": ["styles.css", "text/css; charset=utf-8"],
-  "/app.js": ["app.js", "text/javascript; charset=utf-8"]
+  "/app.js": ["app.js", "text/javascript; charset=utf-8"],
+  "/features.js": ["features.js", "text/javascript; charset=utf-8"]
 };
 
 function sendJson(response, statusCode, data) {
@@ -104,10 +108,61 @@ async function createPlan(request, response) {
   }
 }
 
+async function askAssistant(request, response) {
+  if (request.method !== "POST") {
+    response.setHeader("Allow", "POST");
+    sendJson(response, 405, { error: "Usa POST para consultar al asistente." });
+    return;
+  }
+
+  try {
+    const input = validateAssistantRequest(await readJson(request));
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new PlannerError("El servicio de IA no está configurado. Añade OPENAI_API_KEY en el entorno del servidor.", 503);
+    }
+
+    const apiResponse = await fetch(process.env.OPENAI_API_URL || "https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      signal: AbortSignal.timeout(30_000),
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+        messages: buildAssistantMessages(input),
+        temperature: 0.4,
+        max_tokens: 500
+      })
+    });
+
+    if (!apiResponse.ok) {
+      console.error(`El proveedor de IA respondió con estado ${apiResponse.status}.`);
+      throw new PlannerError("No se pudo consultar al asistente. Intenta de nuevo más tarde.", 502);
+    }
+
+    const data = await apiResponse.json();
+    const content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+    sendJson(response, 200, validateAssistantResponse(content));
+  } catch (error) {
+    if (error instanceof PlannerError) {
+      sendJson(response, error.statusCode, { error: error.message });
+      return;
+    }
+    console.error("Error al consultar al asistente:", error);
+    sendJson(response, 502, { error: "No se pudo conectar con el asistente. Intenta de nuevo." });
+  }
+}
+
 async function handleRequest(request, response) {
   const pathname = new URL(request.url, "http://localhost").pathname;
   if (pathname === "/api/plan") {
     await createPlan(request, response);
+    return;
+  }
+  if (pathname === "/api/assistant") {
+    await askAssistant(request, response);
     return;
   }
   if (request.method !== "GET" && request.method !== "HEAD") {

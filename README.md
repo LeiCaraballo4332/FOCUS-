@@ -24,16 +24,21 @@ Desarrollar una aplicación accesible y clara para registrar responsabilidades, 
 
 - Dashboard con tareas pendientes, tiempo enfocado y actividades completadas.
 - Crear, editar, buscar, filtrar, completar y eliminar tareas.
-- Registro de descripción, categoría, fecha límite, hora sugerida, duración y prioridad.
+- Registro de descripción, categoría (universidad, trabajo o vida personal), fecha límite, hora sugerida, duración, prioridad y proyecto asociado.
 - Disponibilidad diaria configurable.
 - Planificador con IA que considera fechas límite, prioridades, duración, disponibilidad y pausas.
 - Validación de horarios para impedir solapamientos, duraciones incorrectas y descansos insuficientes.
 - Indicación de actividades que no caben en el tiempo disponible, sin forzar un horario poco realista.
 - Acción para reorganizar tareas vencidas o pendientes cuando el plan original ya no funciona.
 - Vista semanal y temporizador de concentración de 25 minutos con descansos de 5 minutos.
+- Calendario navegable semanal y mensual, y tablero Kanban sincronizado con los estados de las tareas.
+- Seguimiento de hábitos con metas semanales y rachas, notas locales, bloques de tiempo sin solapamientos, objetivos con progreso y proyectos con tareas asociadas.
+- Registro local de gastos e ingresos en USD, y estadísticas derivadas de tareas, hábitos y concentración.
+- Asistente de organización con IA para recomendaciones y modo de emergencia para reorganizar pendientes.
+- Recordatorios locales para las tareas y bloques con horario mientras la página está abierta y las notificaciones del navegador están autorizadas. El usuario elige el aviso con 5, 15 o 30 minutos de anticipación.
 - Interfaz adaptable a escritorio, tablet y celular.
 
-Las tareas y la disponibilidad se guardan actualmente en `localStorage` del navegador. No hay cuentas ni sincronización entre dispositivos.
+Las tareas, la disponibilidad y los datos de las nuevas secciones se guardan en `localStorage` del navegador. Las notas y los gastos permanecen en ese navegador; no hay cuentas ni sincronización entre dispositivos. Los recordatorios solo se ejecutan mientras la página permanece abierta y autorizada por el navegador. Los importes se expresan en USD.
 
 ## 6. Tecnologías utilizadas
 
@@ -47,20 +52,21 @@ Las tareas y la disponibilidad se guardan actualmente en `localStorage` del nave
 
 ```text
 Navegador
-  index.html + styles.css + app.js
-  ├── Interfaz, tareas, disponibilidad y temporizador
-  ├── localStorage para persistencia local
-  └── POST /api/plan
+  index.html + styles.css + app.js + features.js
+  ├── Tareas, disponibilidad, temporizador y vistas de organización
+  ├── localStorage para tareas y datos privados de cada sección
+  ├── POST /api/plan
+  └── POST /api/assistant
           |
 Servidor Node.js (server.js)
   ├── Sirve los archivos estáticos
   ├── Mantiene la clave del proveedor en el entorno del servidor
-  └── planner.js: valida entrada, construye el prompt y valida la respuesta
+  └── planner.js: valida solicitudes, construye prompts y valida respuestas
           |
 Proveedor de IA compatible con Chat Completions
 ```
 
-El servidor no almacena las solicitudes de planificación. Antes de enviar información de tareas al proveedor, la interfaz solicita confirmación. La clave de IA nunca se entrega al navegador.
+El servidor no almacena las solicitudes del planificador ni del asistente. Antes de enviar contexto al proveedor, la interfaz solicita confirmación. La clave de IA nunca se entrega al navegador.
 
 ## 8. Estructura del proyecto
 
@@ -71,12 +77,15 @@ El servidor no almacena las solicitudes de planificación. Antes de enviar infor
 ├── AGENTS.md             # Guía permanente para agentes de programación
 ├── README.md             # Documentación del proyecto
 ├── app.js                # Interacciones y estado de la interfaz
+├── features.js           # Calendario, Kanban y módulos locales de organización
+├── focus-video-mockup.mp4 # Video ilustrativo de la experiencia de FOCUS (30 s)
 ├── index.html            # Estructura de la aplicación
 ├── package.json          # Scripts y requisito de Node.js
 ├── planner.js            # Validación, prompt y validación del plan generado
-├── server.js             # Servidor local y endpoint POST /api/plan
+├── server.js             # Servidor local y endpoints POST /api/plan y /api/assistant
 ├── styles.css            # Estilos, estados y diseño responsivo
 └── test/
+    ├── assistant.test.js # Validación y límites del asistente de IA
     └── planner.test.js   # Pruebas de entrada, prompts y horarios
 ```
 
@@ -154,14 +163,16 @@ Antes de devolver el resultado al cliente, el servidor valida identificadores, d
 
 La planificación requiere `OPENAI_API_KEY`. Si falta o el proveedor falla, se muestra el error; no se genera un plan simulado. Los nombres, descripciones, categorías, prioridades, fechas límite, duraciones y disponibilidad se envían al proveedor solo tras la confirmación del usuario.
 
+El asistente de recomendaciones utiliza `POST /api/assistant` y la misma clave del servidor. Después de pedir confirmación, envía la pregunta, hasta seis mensajes previos, el horario disponible, nombres y fechas objetivo de hasta 20 proyectos, y hasta 30 tareas pendientes con sus títulos, categorías, prioridades, fechas límite, duración y estado. No envía descripciones, notas ni gastos. La respuesta se limita a texto breve y consejos: no puede modificar tareas ni calendarios. El modo de emergencia vuelve a usar el planificador validado de `POST /api/plan`; no cambia fechas límite ni tareas completadas. Sin `OPENAI_API_KEY`, ambos servicios muestran un error explícito.
+
 ## 13. Despliegue en Vercel
 
-El despliegue completo en Vercel **está pendiente**. El proyecto actual usa `server.js` como servidor Node persistente para desarrollo local; Vercel espera funciones serverless para endpoints como `/api/plan`. No hay todavía `vercel.json` ni una función `/api/plan`.
+El despliegue completo en Vercel **está pendiente**. El proyecto actual usa `server.js` como servidor Node persistente para desarrollo local; Vercel espera funciones serverless para endpoints como `/api/plan` y `/api/assistant`. No hay todavía `vercel.json` ni funciones serverless.
 
 Para desplegar la aplicación completa:
 
-1. Crear una función serverless compatible con Vercel para `/api/plan`, reutilizando la validación y el prompt de `planner.js`.
-2. Configurar el proyecto en Vercel para servir `index.html`, `styles.css` y `app.js` como archivos estáticos y enrutar `/api/plan` a esa función.
+1. Crear funciones serverless compatibles con Vercel para `/api/plan` y `/api/assistant`, reutilizando la validación y los prompts de `planner.js`.
+2. Configurar el proyecto en Vercel para servir los archivos estáticos y enrutar ambos endpoints a sus funciones.
 3. Añadir `OPENAI_API_KEY` y, si corresponde, `OPENAI_MODEL` y `OPENAI_API_URL` en las variables de entorno de Vercel para los entornos necesarios.
 4. No definir secretos con prefijos que los expongan al navegador (por ejemplo, variables públicas del frontend).
 5. Probar la página, la función, validación de errores y generación con una credencial válida antes de promover a producción.
@@ -170,7 +181,7 @@ Hasta completar esa adaptación, `npm start` es el método de ejecución soporta
 
 ## 14. Estado actual y funcionalidades pendientes
 
-**Implementado:** dashboard, tareas CRUD, fechas límite y prioridades, disponibilidad diaria, persistencia local, temporizador, vista semanal, endpoint de IA con validación estricta, reorganización de pendientes y pruebas unitarias del planificador.
+**Implementado:** dashboard, tareas CRUD, fechas límite y prioridades, disponibilidad diaria, persistencia local, temporizador, calendarios semanal y mensual, tablero Kanban, hábitos, notas, bloques de tiempo con validación de solapamientos, gastos e ingresos locales, estadísticas de actividad, objetivos, proyectos, recordatorios en primer plano, recomendaciones con IA sujetas a confirmación, endpoint de planificación con validación estricta y modo de emergencia.
 
 **Pendiente:**
 
@@ -179,7 +190,13 @@ Hasta completar esa adaptación, `npm start` es el método de ejecución soporta
 - Pruebas automatizadas de interfaz y flujos completos en navegador.
 - Configuración de disponibilidad por día de la semana y gestión avanzada de calendarios.
 - Persistencia remota y sincronización de sesiones de concentración.
-- Verificación de la integración con IA usando credenciales reales y el proveedor elegido para producción.
+- Verificación de las integraciones con IA usando credenciales reales y el proveedor elegido para producción.
 - Tratamiento de autenticación, límites de uso y controles de abuso antes de ofrecer el endpoint públicamente.
 
 Las funcionalidades pendientes no deben describirse como disponibles hasta que se implementen y prueben.
+
+## 15. Video de demostración
+
+[Ver o descargar el mockup de FOCUS](./focus-video-mockup.mp4) (MP4, 30 segundos, 1600 × 900).
+
+El video muestra una demostración visual de la interfaz: creación y priorización de tareas, selección de disponibilidad, calendario semanal y temporizador de concentración. El horario que aparece es ilustrativo; el video no ejecuta la aplicación ni demuestra una respuesta real del proveedor de IA. La planificación y el asistente requieren `OPENAI_API_KEY` en el servidor.

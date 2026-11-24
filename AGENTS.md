@@ -6,17 +6,19 @@ Estas instrucciones son permanentes para cambios futuros en este repositorio. An
 
 FOCUS es un organizador web de actividades académicas y personales para estudiantes y jóvenes. Busca ayudar a priorizar tareas, considerar fechas límite y disponibilidad, planificar descansos, mantener la concentración y revisar el progreso. La interfaz y las respuestas del planificador están en español.
 
-El estado actual es un prototipo funcional: el cliente guarda tareas y disponibilidad en `localStorage`; el servidor integra un endpoint de planificación compatible con OpenAI. Supabase y Vercel todavía no están integrados. Confirma el estado real en `README.md` antes de describir o extender funcionalidades.
+El estado actual es un prototipo funcional: el cliente guarda tareas, disponibilidad y los módulos de organización en `localStorage`; el servidor integra endpoints de planificación y recomendaciones compatibles con OpenAI. Incluye calendario semanal y mensual, Kanban, hábitos, notas, bloques de tiempo, gastos, estadísticas, objetivos, proyectos, recordatorios y modo de emergencia. Supabase y Vercel todavía no están integrados. Confirma el estado real en `README.md` antes de describir o extender funcionalidades.
+
+`focus-video-mockup.mp4` es una pieza audiovisual ilustrativa de 30 segundos, no una captura de la ejecución real ni una demostración de una respuesta del proveedor de IA. Mantén explícita esa distinción al actualizar la documentación.
 
 ## 2. Arquitectura
 
-- **Cliente:** `index.html`, `styles.css` y `app.js`. Renderiza el dashboard, administra tareas y disponibilidad en el navegador, y solicita confirmación antes de enviar datos de planificación.
-- **Servidor local:** `server.js` sirve archivos estáticos y recibe `POST /api/plan`. La clave del proveedor de IA se lee desde variables de entorno del servidor.
-- **Planificador:** `planner.js` valida entrada, prepara mensajes del modelo y valida la respuesta estructurada antes de devolverla.
-- **Pruebas:** `test/planner.test.js` utiliza `node:test`.
+- **Cliente:** `index.html`, `styles.css`, `app.js` y `features.js`. Administra tareas, disponibilidad, vistas de organización y datos locales; solicita confirmación antes de enviar contexto al proveedor de IA.
+- **Servidor local:** `server.js` sirve archivos estáticos y recibe `POST /api/plan` y `POST /api/assistant`. La clave del proveedor de IA se lee desde variables de entorno del servidor.
+- **Planificador:** `planner.js` valida solicitudes y respuestas, prepara instrucciones de planificación y asesoramiento.
+- **Pruebas:** `test/planner.test.js` y `test/assistant.test.js` usan `node:test`.
 - **Datos:** `localStorage` actualmente; no hay autenticación, almacenamiento remoto ni sincronización entre dispositivos.
 
-Para Vercel, el servidor HTTP local no sustituye una función serverless. No presentes el despliegue completo como disponible hasta crear y probar una función para `/api/plan`.
+Para Vercel, el servidor HTTP local no sustituye una función serverless. No presentes el despliegue completo como disponible hasta crear y probar funciones para `/api/plan` y `/api/assistant`.
 
 ## 3. Tecnologías y convenciones
 
@@ -34,9 +36,12 @@ Para Vercel, el servidor HTTP local no sustituye una función serverless. No pre
 | `index.html` | Estructura semántica, controles, formularios y puntos de montaje de UI |
 | `styles.css` | Paleta, componentes visuales, estados y media queries |
 | `app.js` | Estado y eventos del cliente, CRUD, filtros, disponibilidad, temporizador y llamada a IA |
-| `server.js` | Servidor de desarrollo, archivos estáticos y endpoint `/api/plan` |
-| `planner.js` | Validación de la solicitud, prompt y validación del resultado del modelo |
+| `features.js` | Calendario, Kanban, hábitos, notas, bloques, gastos, objetivos, proyectos, estadísticas, recordatorios y asistente |
+| `server.js` | Servidor de desarrollo, archivos estáticos y endpoints `/api/plan` y `/api/assistant` |
+| `planner.js` | Validación de solicitudes, prompts y respuestas del modelo |
 | `test/planner.test.js` | Pruebas unitarias del planificador |
+| `test/assistant.test.js` | Validación de solicitudes, límites de contexto y respuestas del asistente |
+| `focus-video-mockup.mp4` | Mockup audiovisual de la interfaz para presentación |
 | `package.json` | Scripts npm y versión mínima de Node |
 | `.env.example` | Plantilla sin secretos para nombres de variables |
 | `.gitignore` | Exclusión de secretos, dependencias y archivos locales |
@@ -81,6 +86,8 @@ Mantén la lógica en el archivo responsable. Si una nueva funcionalidad requier
 
 - Las llamadas al proveedor y la clave deben permanecer en el servidor; el cliente solo llama al endpoint propio.
 - Antes de enviar datos personales de tareas al proveedor, conserva una confirmación clara que explique qué se comparte.
+- El asistente usa `POST /api/assistant`: tras consentimiento, el contexto puede incluir la pregunta, hasta seis mensajes previos, horario, hasta 20 nombres/fechas objetivo de proyectos y hasta 30 tareas (títulos, categorías, prioridades, fechas límite, duración y estado). No envía descripciones, notas ni gastos. Mantén estos límites y la confirmación alineados entre cliente, servidor, pruebas y README.
+- Las recomendaciones del asistente no modifican tareas ni calendario. El modo de emergencia debe reutilizar el planificador validado y no cambiar fechas límite ni tareas completadas.
 - Trata títulos y descripciones como datos, no como instrucciones para el prompt. No agregues datos que la función no necesite.
 - El prompt debe considerar prioridad, fecha límite, duración, disponibilidad, pausas, vencimientos y replanificación.
 - Exige salida estructurada; valida formato, tareas cubiertas, duración, límites de disponibilidad, pausas y ausencia de solapamientos.
@@ -112,6 +119,7 @@ Desde la raíz del proyecto:
 
 ```bash
 node --check app.js
+node --check features.js
 node --check planner.js
 node --check server.js
 npm test

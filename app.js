@@ -40,11 +40,13 @@ function loadTasks() {
         ...task,
         description: typeof task.description === "string" ? task.description : "",
         category: typeof task.category === "string" ? task.category : "Personal",
+        project: typeof task.project === "string" ? task.project : "",
         priority: ["Alta", "Media", "Baja"].includes(task.priority) ? task.priority : "Media",
         date: isValidDateKey(task.date) ? task.date : dateOffset(0),
         time: typeof task.time === "string" ? task.time : "12:00",
         duration: [25, 45, 60, 90].includes(Number(task.duration)) ? Number(task.duration) : 25,
-        done: Boolean(task.done)
+        done: Boolean(task.done || task.status === "done"),
+        status: task.done || task.status === "done" ? "done" : task.status === "in_progress" ? "in_progress" : "pending"
       }));
   } catch (error) {
     console.error("No se pudieron cargar las tareas guardadas.", error);
@@ -179,7 +181,7 @@ function renderTaskList() {
     visibleTasks.forEach((task) => {
       const row = document.createElement("article");
       row.className = `task-row${task.done ? " is-done" : ""}`;
-      const categoryClass = { Estudio: "estudio", Personal: "personal", Proyecto: "proyecto" }[task.category] || "";
+      const categoryClass = { Estudio: "estudio", Universidad: "estudio", Trabajo: "proyecto", "Vida personal": "personal", Personal: "personal", Proyecto: "proyecto" }[task.category] || "";
       const priorityClass = { Alta: "alta", Media: "media", Baja: "baja" }[task.priority] || "";
       row.innerHTML = `
         <button class="task-check" type="button" data-toggle="${escapeHtml(task.id)}" aria-label="${task.done ? "Marcar pendiente" : "Completar"}: ${escapeHtml(task.title)}">${task.done ? "✓" : ""}</button>
@@ -246,14 +248,17 @@ function render() {
   renderTaskList();
   renderWeek();
   document.querySelector("#stat-focus").innerHTML = `${focusedMinutes} <small>min</small>`;
+  document.dispatchEvent(new CustomEvent("focus:tasks-changed"));
 }
 
 function openTaskDialog(task = null) {
   taskForm.reset();
+  if (window.focusFeatures) window.focusFeatures.refreshTaskProjects(task ? task.project || "" : "");
   taskForm.elements.namedItem("taskId").value = task ? task.id : "";
   taskForm.elements.title.value = task ? task.title : "";
   taskForm.elements.description.value = task ? task.description || "" : "";
   taskForm.elements.category.value = task ? task.category : "Estudio";
+  taskForm.elements.project.value = task ? task.project || "" : "";
   taskForm.elements.priority.value = task ? task.priority : "Media";
   taskForm.elements.date.value = task ? task.date : dateOffset(0);
   taskForm.elements.time.value = task ? task.time : "10:00";
@@ -273,6 +278,7 @@ function saveTask(event) {
     title,
     description: String(formData.get("description")).trim(),
     category: String(formData.get("category")),
+    project: String(formData.get("project") || ""),
     priority: String(formData.get("priority")),
     date: String(formData.get("date")),
     time: String(formData.get("time")) || "12:00",
@@ -289,7 +295,8 @@ function saveTask(event) {
     const task = {
       id: window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       ...values,
-      done: false
+      done: false,
+      status: "pending"
     };
     tasks.push(task);
   }
@@ -417,9 +424,29 @@ function toggleTask(id) {
   const task = tasks.find((item) => item.id === id);
   if (!task) return;
   task.done = !task.done;
+  task.status = task.done ? "done" : "pending";
   saveTasks();
   render();
   if (task.done) showToast("¡Tarea completada! Date crédito por ese avance.");
+}
+
+function updateTaskStatus(id, status) {
+  const task = tasks.find((item) => item.id === id);
+  if (!task || !["pending", "in_progress", "done"].includes(status)) return false;
+  task.status = status;
+  task.done = status === "done";
+  saveTasks();
+  render();
+  return true;
+}
+
+function updateTaskProject(id, project) {
+  const task = tasks.find((item) => item.id === id);
+  if (!task) return false;
+  task.project = project;
+  saveTasks();
+  render();
+  return true;
 }
 
 function deleteTask(id) {
@@ -545,14 +572,23 @@ document.querySelector("#menu-button").addEventListener("click", (event) => {
   event.currentTarget.setAttribute("aria-expanded", String(isOpen));
   event.currentTarget.setAttribute("aria-label", isOpen ? "Cerrar menú" : "Abrir menú");
 });
-document.querySelector(".main-nav").addEventListener("click", (event) => {
+document.querySelectorAll(".main-nav").forEach((nav) => nav.addEventListener("click", (event) => {
   if (event.target.closest("a")) {
     document.querySelector(".sidebar").classList.remove("mobile-open");
     const menuButton = document.querySelector("#menu-button");
     menuButton.setAttribute("aria-expanded", "false");
     menuButton.setAttribute("aria-label", "Abrir menú");
   }
-});
+}));
+
+window.focusApp = {
+  createPlan,
+  getTasks: () => tasks.map((task) => ({ ...task })),
+  openTaskDialog,
+  showToast,
+  updateTaskProject,
+  updateTaskStatus
+};
 
 render();
 document.querySelector("#availability-start").value = availability.start;
